@@ -7,42 +7,28 @@ predicate sortedByActEnd(s: seq<Activity>)
                sortedByActEnd(s[1..])
 }
 
-// TODO de terminat + varianta iterativa
-// method ASPGreedyMb(activities:seq<Activity>) returns (takenActivities:set<Activity>)
-//     decreases |activities|
-//     requires |activities| >= 1
-//     requires sortedByActEnd(activities)
-//     ensures |takenActivities| > 0
-//     ensures |takenActivities| > 0 ==> disjointActivitiesSet(takenActivities)
-// {
-//     if (|activities| <= 1) 
-//     {
-//         if (|takenActivities| == 0 )
-//         {
-//             takenActivities := {activities[0]};
-//         }
-//         else if (canBeTaken(takenActivities, activities[0]))
-//             {
-//                 takenActivities := takenActivities + {activities[0]};
-//             }
-//     }
-//     else 
-//     {
-//         takenActivities := takenActivities + {activities[0]};
-//         if activities[1].actStart >= activities[0].actEnd
-//         {
-//             var nextActivities := ASPGreedyMb([activities[1]] + activities[2..]);
-//             takenActivities := takenActivities + {activities[1]} + nextActivities;
-//         }
-//     }
-// }
+//TODO de terminat
+function method ASPGreedyMb(activities:seq<Activity>) : set<Activity> //returns (takenActivities:set<Activity>)
+    decreases |activities|
+    requires |activities| >= 1
+    requires sortedByActEnd(activities)
+    ensures |ASPGreedyMb(activities)| > 0
+    ensures disjointActivitiesSet(ASPGreedyMb(activities))
+{
+    if (|activities| == 1) 
+        then if (canBeTakenRec(activities[0], activities[1..]))
+            then {activities[0]}
+            else {}
+        else if (canBeTakenRec(activities[0], activities[1..]))
+            then {activities[0]} + ASPGreedyMb(activities[1..])
+            else ASPGreedyMb(activities[1..])
+}
 
-// predicate nonOverlappingActivities(s:set<Activity>)
-// {
-//     |s| > 0 ==> forall i, j :: 0 <= i < j < |s| ==> s[i].actEnd <= s[j].actStart
-// }
-
-predicate canBeTaken(takenActivities:set<Activity>, act:Activity)
+predicate method canBeTakenRec(act:Activity, activities:seq<Activity>)
+{
+    true // de facut!!
+}
+predicate method canBeTaken(takenActivities:set<Activity>, act:Activity)
 {
     forall act1 :: act1 in takenActivities ==> !overlappingActivities(act, act1)
 }
@@ -55,27 +41,42 @@ predicate nonOverlappingActivitiesTaken(activities:array<Activity>, taken:set<Ac
             activities[i] !in taken)
 }
 
-predicate differentActivities(act1:Activity, act2:Activity)
+predicate method differentActivities(act1:Activity, act2:Activity)
 {
     act1.actStart != act2.actStart && act1.actEnd != act2.actEnd
 }
 
 // predicat pentru overlapping intre 2 activitati
-predicate overlappingActivities(act1:Activity, act2:Activity)
+predicate method overlappingActivities(act1:Activity, act2:Activity)
 {
-    act1.actStart < act2.actEnd && differentActivities(act1, act2)
+    (act1.actStart < act2.actEnd || act2.actStart < act1.actEnd) && differentActivities(act1, act2)
 }
 // predicat care primeste un set si spune daca toate sunt disjuncte -- postcond si invariant de buncla
-predicate disjointActivitiesSet(activities:set<Activity>)
+predicate method disjointActivitiesSet(activities:set<Activity>)
 {
     forall act1 :: act1 in activities ==> forall act2 :: act2 in activities ==> !overlappingActivities(act1, act2)
 }
 
-method ASPGreedy(activities:array<Activity>) returns (takenActivities:set<Activity>) // sa nu mai intoarca notTaken, intoarce o multime disjuncta de activitati
+// verifica daca o solutie este optima
+predicate method optimalSolution(activities: seq<Activity>, takenActivities: set<Activity>)
+    requires |activities| > 0
+{
+    forall act :: (act in activities[1..] && act !in takenActivities) ==> !disjointActivitiesSet((takenActivities - {activities[0]}) + {act})
+}
+
+// verifica daca adaugarea unui element pastreaza optimalitatea unei solutii patiale
+predicate method leadsToOptimal(activities: seq<Activity>, takenActivities: set<Activity>, act: Activity)
+    requires |activities| > 0
+{
+    optimalSolution(activities, takenActivities+{act})
+}
+//TODO de gasit predicate/postcond/invariant care sa determine daca solutia este optima!
+method ASPGreedy(activities:array<Activity>) returns (takenActivities:set<Activity>)
     requires activities.Length > 0
     requires sortedByActEnd(activities[0..activities.Length]);
     ensures nonOverlappingActivitiesTaken(activities, takenActivities);
     ensures disjointActivitiesSet(takenActivities)
+    ensures optimalSolution(activities[0..], takenActivities)
 {
     takenActivities := {activities[0]};
     var lastTaken := activities[0];
@@ -83,13 +84,13 @@ method ASPGreedy(activities:array<Activity>) returns (takenActivities:set<Activi
     while index < activities.Length
         decreases activities.Length - index
         invariant 0 < index <= activities.Length
-        //invariant index < activities.Length ==> activities[index] !in takenActivities
         invariant lastTaken in takenActivities
-        //invariant forall i :: 0 <= i < index ==> (activities[i] !in takenActivities ==> !canBeTaken(takenActivities, activities[i]))
+        invariant forall i :: 0 <= i < index ==> (activities[i] !in takenActivities ==> !canBeTaken(takenActivities, activities[i]))
         invariant nonOverlappingActivitiesTaken(activities, takenActivities)
         invariant disjointActivitiesSet(takenActivities)
+        invariant optimalSolution(activities[..index], takenActivities)
     {
-        if activities[index].actStart >= lastTaken.actEnd
+        if canBeTaken(takenActivities, activities[index]) && leadsToOptimal(activities[..index], takenActivities, activities[index])
         {
             takenActivities := takenActivities + {activities[index]};
             lastTaken := activities[index];
