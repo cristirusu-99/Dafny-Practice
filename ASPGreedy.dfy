@@ -8,28 +8,47 @@ predicate sortedByActEnd(s: seq<Activity>)
 }
 
 //TODO de terminat, de adugat un parametru care acumuleaza activitatile deja alese(initial lista vida)
-function method ASPGreedyRec(activities:seq<Activity>, accumulator:set<Activity>) : set<Activity>   //as avea nevoie de ajutor/lamuriri
+method ASPGreedyRec(activities:seq<Activity>, accumulator:set<Activity>) returns (takenActivities:set<Activity>)   //as avea nevoie de ajutor/lamuriri
                                                                                                 //deoarece nu imi pot da seama de cu nu se
                                                                                                 //valideaza postconditiile
     decreases |activities|
     requires |activities| >= 1
     requires sortedByActEnd(activities)
-    ensures |ASPGreedyRec(activities, {})| > 0  //failure to decrease termination measure 
+    ensures |takenActivities| > 0  //failure to decrease termination measure 
                                                 //-- tind sa cred ca se intampla atunci cand |activities| = 1
-    ensures disjointActivitiesSet(accumulator)  //might not hold 
+    requires disjointActivitiesSet(accumulator)  //might not hold 
                                                 //-- parametrul <accumulator> functioneaza aproximativ identic cu 
                                                 //<takenActivities> din varianta iterativa
-    ensures disjointActivitiesSet(ASPGreedyRec(activities, {})) //might not hold 
+    ensures disjointActivitiesSet(takenActivities) //might not hold 
                                                                 //-- tind sa cred ca e din cauza faptului ca nu poate 
                                                                 //dovedi ca parametrul <accumulator> este disjointActivitiesSet
 {
     if (|activities| == 1) 
-        then if (canBeTaken(accumulator, activities[0]))
-            then accumulator + {activities[0]}
-            else accumulator
-        else if (canBeTaken(accumulator, activities[0]))
-            then ASPGreedyRec(activities[1..], accumulator + {activities[0]})
-            else ASPGreedyRec(activities[1..], accumulator)
+    {
+        if (canBeTaken(accumulator, activities[0]))
+        {
+            return accumulator + {activities[0]};
+        }
+        else
+        {
+            return accumulator;
+        }
+    }
+        else 
+        {
+            if (canBeTaken(accumulator, activities[0]))
+            {
+                assert |activities[1..]|<|activities|;
+                var temp := ASPGreedyRec(activities[1..], accumulator + {activities[0]});
+                return temp;
+            }
+            else
+            {
+                assert |activities[1..]|<|activities|;
+                var temp := ASPGreedyRec(activities[1..], accumulator);
+                return temp;
+            }
+    }
 }
 
 predicate method canBeTaken(takenActivities:set<Activity>, act:Activity)    //Am adugat <|takenActivities| == 0> pentru 
@@ -112,7 +131,7 @@ function castig(solution:set<Activity>):int
 predicate optimalSolution(activities: seq<Activity>, takenActivities: set<Activity>)
     requires |activities| > 0
 {
-    isSolution(activities, takenActivities) //&& forall sol :: sol in allSolutions(activities) ==> castig(takenActivities) >= castig(sol)
+    isSolution(activities, takenActivities) && forall sol :: isSolution(activities, sol)  ==> castig(takenActivities) >= castig(sol)
 }
 
 //TODO de gasit predicate/postcond/invariant care sa determine daca solutia este optima!
