@@ -7,61 +7,14 @@ predicate sortedByActEnd(s: seq<Activity>)
                sortedByActEnd(s[1..])
 }
 
-//TODO de terminat, de adugat un parametru care acumuleaza activitatile deja alese(initial lista vida)
-method ASPGreedyRec(activities:seq<Activity>, accumulator:set<Activity>) returns (takenActivities:set<Activity>)   //as avea nevoie de ajutor/lamuriri
-                                                                                                //deoarece nu imi pot da seama de cu nu se
-                                                                                                //valideaza postconditiile
-    decreases |activities|
-    requires |activities| >= 1
-    requires sortedByActEnd(activities)
-    ensures |takenActivities| > 0  //failure to decrease termination measure 
-                                                //-- tind sa cred ca se intampla atunci cand |activities| = 1
-    requires disjointActivitiesSet(accumulator)  //might not hold 
-                                                //-- parametrul <accumulator> functioneaza aproximativ identic cu 
-                                                //<takenActivities> din varianta iterativa
-    ensures disjointActivitiesSet(takenActivities) //might not hold 
-                                                                //-- tind sa cred ca e din cauza faptului ca nu poate 
-                                                                //dovedi ca parametrul <accumulator> este disjointActivitiesSet
-{
-    if (|activities| == 1) 
-    {
-        if (canBeTaken(accumulator, activities[0]))
-        {
-            return accumulator + {activities[0]};
-        }
-        else
-        {
-            return accumulator;
-        }
-    }
-        else 
-        {
-            if (canBeTaken(accumulator, activities[0]))
-            {
-                assert |activities[1..]|<|activities|;
-                var temp := ASPGreedyRec(activities[1..], accumulator + {activities[0]});
-                return temp;
-            }
-            else
-            {
-                assert |activities[1..]|<|activities|;
-                var temp := ASPGreedyRec(activities[1..], accumulator);
-                return temp;
-            }
-    }
-}
-
-predicate method canBeTaken(takenActivities:set<Activity>, act:Activity)    //Am adugat <|takenActivities| == 0> pentru 
-                                                                            //tratarea situatie cand fac prima verificare 
-                                                                            //in algoritmul recursiv
+predicate method canBeTaken(takenActivities:set<Activity>, act:Activity)
 {
     |takenActivities| == 0 || forall act1 :: act1 in takenActivities ==> !overlappingActivities(act, act1)
 }
 
-predicate nonOverlappingActivitiesTaken(activities:array<Activity>, taken:set<Activity>)
-    reads activities;
+predicate nonOverlappingActivitiesTaken(activities:seq<Activity>, taken:set<Activity>)
 {
-    activities.Length > 0 ==> forall i :: 0 <= i < activities.Length ==>
+    |activities| > 0 ==> forall i :: 0 <= i < |activities| ==>
         (forall act :: act in taken ==> overlappingActivities(activities[i], act) ==>
             activities[i] !in taken)
 }
@@ -77,42 +30,12 @@ predicate method overlappingActivities(act1:Activity, act2:Activity)
     (act1.actStart < act2.actEnd || act2.actStart < act1.actEnd) && differentActivities(act1, act2)
 }
 // predicat care primeste un set si spune daca toate sunt disjuncte -- postcond si invariant de buncla
-predicate method disjointActivitiesSet(activities:set<Activity>)    //Am adugat <|takenActivities| == 0> pentru 
-                                                                    //tratarea situatie cand fac prima verificare 
-                                                                    //in algoritmul recursiv
+predicate method disjointActivitiesSet(activities:set<Activity>)
 {
     |activities| == 0 || forall act1 :: act1 in activities ==> forall act2 :: act2 in activities ==> !overlappingActivities(act1, act2)
 }
 
 // verifica daca o solutie este optima
-
-//metoda ce genereaza toate solutiile posibile -- as avea nevoie de o functie care sa poata fi apelata intr-un predicat
-                                                //dar inca nu am reusit sa fac o implementare functionala
-method allSolutions(activities:seq<Activity>) returns (solutions:set<set<Activity>>)
-{
-    solutions := {};
-    var len := |activities|;
-    var i := 0;
-    while (i < len)
-        decreases len - i
-        invariant forall solutie :: solutie in solutions ==> isSolution(activities, solutie)
-    {
-        var sol := {activities[i]};
-        var j := i+1;
-        while (j < len)
-            decreases len - j
-            invariant isSolution(activities, sol)
-        {
-            if(canBeTaken(sol, activities[j]))
-            {
-                sol := sol + {activities[j]};
-            }
-            j := j + 1;
-        }
-        solutions := solutions + {sol};
-        i := i + 1;
-    }
-}
 
 // predicat isSolution
 predicate isSolution(activities:seq<Activity>, takenActivities:set<Activity>)
@@ -127,39 +50,113 @@ function castig(solution:set<Activity>):int
 }
 
 // o solutie e optima daca isSolution si daca orice alta sol are castig mai mic
-// TODO de gasit o metoda de a accesa toate solutiile posibile in predicat (functia pentru <allSolutions>)!!!
 predicate optimalSolution(activities: seq<Activity>, takenActivities: set<Activity>)
-    requires |activities| > 0
+    requires |activities| >= 0
 {
     isSolution(activities, takenActivities) && forall sol :: isSolution(activities, sol)  ==> castig(takenActivities) >= castig(sol)
 }
 
+//
+
+lemma helper1(activities:seq<Activity>, takenActivities:set<Activity>, index:int)
+    requires 0 <= index < |activities|;
+    requires sortedByActEnd(activities);
+    requires optimalSolution(activities[..index], takenActivities);
+    requires canBeTaken(takenActivities, activities[index]);
+    ensures optimalSolution(activities[..index+1], takenActivities+{activities[index]});
+{
+    //TODO de demonstrat!
+}
+
+//TODO lema helper2 cand e adevarat !canBeTaken
+//TODO tutorial leme!
+
 //TODO de gasit predicate/postcond/invariant care sa determine daca solutia este optima!
-method ASPGreedy(activities:array<Activity>) returns (takenActivities:set<Activity>)    //voi modifica <activities> sa fie de tipul <seq<Activity>>
-    requires activities.Length > 0
-    requires sortedByActEnd(activities[0..activities.Length]);
+method ASPGreedy(activities:seq<Activity>) returns (takenActivities:set<Activity>)    //voi modifica <activities> sa fie de tipul <seq<Activity>>
+    requires |activities| > 0
+    requires sortedByActEnd(activities);
     ensures nonOverlappingActivitiesTaken(activities, takenActivities);
     ensures disjointActivitiesSet(takenActivities)
-    ensures optimalSolution(activities[0..], takenActivities)
+    ensures optimalSolution(activities, takenActivities)   //presupun ca nu se valideaza deoarece nu poate asigura proprietatea de substructura optima?
 {
+    var seqLen := |activities|;
     takenActivities := {activities[0]};
     var lastTaken := activities[0];
     var index := 1;
-    while index < activities.Length
-        decreases activities.Length - index
-        invariant 0 < index <= activities.Length
+    var lastIndex := 1;
+    // assert activities[0] in activities[..1];
+    // assert forall act :: act in {activities[0]} ==> act == activities[0];
+    // assert forall act :: act in {activities[0]} ==> act == activities[0] && act in activities[..1];
+    // assert disjointActivitiesSet({activities[0]});
+    // assert forall act :: act in {activities[0]} ==> act in activities[..1];
+    // assert isSolution(activities[..1], {activities[0]});
+    assert forall sol :: (disjointActivitiesSet(sol) && forall act :: act in sol ==> act in activities[..1])  ==> sol == {activities[0]} || sol == {};
+    // assert forall sol :: (disjointActivitiesSet(sol) && forall act :: act in sol ==> act in activities[..1])  ==> castig({activities[0]}) >= castig(sol);
+    // assert forall sol :: isSolution(activities[..1], sol)  ==> castig({activities[0]}) >= castig(sol);
+    // assert optimalSolution(activities[..1], {activities[0]});
+    assert optimalSolution(activities[..lastIndex], takenActivities);
+    while index < seqLen
+        decreases seqLen - index
+        invariant index == lastIndex
+        invariant 0 < index <= seqLen
+        invariant 0 < lastIndex <= seqLen
         invariant lastTaken in takenActivities
         invariant forall i :: 0 <= i < index ==> (activities[i] !in takenActivities ==> !canBeTaken(takenActivities, activities[i]))
         invariant nonOverlappingActivitiesTaken(activities, takenActivities)
         invariant disjointActivitiesSet(takenActivities)
-        invariant optimalSolution(activities[..index], takenActivities) //verific daca este o solutie optima pentru subproblema
-                                                                        //generata(?) de primele <index> activitati, este necesar?
+        invariant optimalSolution(activities[..lastIndex], takenActivities)   //might not be maintained by the loop
+                                                                                    //-- de ce nu poate asigura proprietatea de substructura optima?
     {
         if canBeTaken(takenActivities, activities[index])
         {
+            //assert optimalSolution(activities[..index], takenActivities);
+            helper1(activities, takenActivities, index);
             takenActivities := takenActivities + {activities[index]};
             lastTaken := activities[index];
+            assert optimalSolution(activities[..lastIndex+1], takenActivities);
         }
+        lastIndex := index + 1;
         index := index + 1;
+        assert optimalSolution(activities[..lastIndex], takenActivities);
+    }
+    assert optimalSolution(activities[..lastIndex], takenActivities);
+}
+
+//TODO de terminat, de adugat un parametru care acumuleaza activitatile deja alese(initial lista vida)
+method ASPGreedyRec(activities:seq<Activity>, accumulator:set<Activity>) returns (takenActivities:set<Activity>)
+    decreases |activities|
+    requires |activities| >= 1
+    requires sortedByActEnd(activities)
+    ensures |takenActivities| > 0
+    requires disjointActivitiesSet(accumulator)
+    ensures disjointActivitiesSet(takenActivities)
+    ensures optimalSolution(activities, takenActivities)   //verificat de ce crapa?!
+    //--cum pot asigura ca la prima iteratie se intra cu <accumulator={}>?
+{
+    if (|activities| == 1) 
+    {
+        if (canBeTaken(accumulator, activities[0]))
+        {
+            return accumulator + {activities[0]};
+        }
+        else
+        {
+            return accumulator;
+        }
+    }
+    else 
+    {
+        if (canBeTaken(accumulator, activities[0]))
+        {
+            assert |activities[1..]|<|activities|;
+            var temp := ASPGreedyRec(activities[1..], accumulator + {activities[0]});
+            return temp;
+        }
+        else
+        {
+            assert |activities[1..]|<|activities|;
+            var temp := ASPGreedyRec(activities[1..], accumulator);
+            return temp;
+        }
     }
 }
