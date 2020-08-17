@@ -7,9 +7,15 @@ predicate sortedByActEnd(s: seq<Activity>)
                sortedByActEnd(s[1..])
 }
 
+predicate distinctActivitiesSeq(s: seq<Activity>)
+    decreases s
+{
+    forall i :: 0 <= i < |s| - 1 ==> forall j :: i < j < |s| ==> differentActivities(s[i], s[j])
+}
+
 predicate method canBeTaken(takenActivities:set<Activity>, act:Activity)
 {
-    |takenActivities| == 0 || forall act1 :: act1 in takenActivities ==> !overlappingActivities(act, act1)
+    act !in takenActivities && (|takenActivities| == 0 || forall act1 :: act1 in takenActivities ==> !overlappingActivities(act, act1))// && differentActivities(act, act1)
 }
 
 predicate nonOverlappingActivitiesTaken(activities:seq<Activity>, taken:set<Activity>)
@@ -49,6 +55,26 @@ function castig(solution:set<Activity>):int
     |solution|
 }
 
+// review later?
+// function maxCastig(solutions:seq<set<Activity>>):int
+//     decreases solutions
+//     requires |solutions| > 0
+// {
+//     if |solutions| == 1
+//     then |solutions[0]|
+//     else
+//         if |solutions[0]| > maxCastig(solutions[1..])
+//         then |solutions[0]|
+//         else maxCastig(solutions[1..])
+// }
+
+// lemma testMaxCastig(activities:seq<Activity>) 
+// {
+//     var sols:seq<set<Activity>> :| forall sol :: isSolution(activities, sol) ==> sol in sols;
+//     assert forall sol :: isSolution(activities, sol) ==> castig(sol) <= maxCastig(sols);
+
+// }
+
 // o solutie e optima daca isSolution si daca orice alta sol are castig mai mic
 predicate optimalSolution(activities: seq<Activity>, takenActivities: set<Activity>)
     requires |activities| >= 0
@@ -58,7 +84,8 @@ predicate optimalSolution(activities: seq<Activity>, takenActivities: set<Activi
 
 //
 
-lemma helper1(activities:seq<Activity>, takenActivities:set<Activity>, index:int)
+lemma leadsToOptimal(activities:seq<Activity>, takenActivities:set<Activity>, index:int)
+    requires |activities| > 1
     requires 0 <= index < |activities|;
     requires sortedByActEnd(activities);
     requires optimalSolution(activities[..index], takenActivities);
@@ -66,6 +93,38 @@ lemma helper1(activities:seq<Activity>, takenActivities:set<Activity>, index:int
     ensures optimalSolution(activities[..index+1], takenActivities+{activities[index]});
 {
     //TODO de demonstrat!
+    //assert forall sol :: (disjointActivitiesSet(sol) && forall act :: act in sol ==> act in activities[..2])  ==> sol == {activities[0], activities[1]} || sol == {activities[0]} || sol == {activities[1]} || sol == {};
+    assert isSolution(activities[..index+1], takenActivities+{activities[index]});
+    assert forall sol :: isSolution(activities[..index], sol)  ==> |takenActivities| >= |sol|;
+    // assert |{activities[index]}| == 1;
+    // assert activities[index] !in takenActivities;
+    assert |takenActivities+{activities[index]}| == |takenActivities| + 1;
+    assert optimalSolution(activities[..index], takenActivities);
+    assert forall sol :: isSolution(activities[..index], sol) ==> |sol| <= |takenActivities|;
+    assert forall sol :: isSolution(activities[..index+1], sol) && activities[index] in sol ==> isSolution(activities[..index], sol - {activities[index]});
+    assert forall sol :: isSolution(activities[..index+1], sol) ==> activities[index] in sol || activities[index] !in sol;
+    assert forall sol :: isSolution(activities[..index+1], sol) ==> |sol| <= |takenActivities| + 1;
+    assert forall sol :: isSolution(activities[..index+1], sol) ==> |takenActivities+{activities[index]}| >= |sol|;
+}
+
+lemma notLeadingToOptimal(activities:seq<Activity>, takenActivities:set<Activity>, index:int)
+    requires |activities| > 1
+    requires 0 <= index < |activities|;
+    requires sortedByActEnd(activities);
+    requires optimalSolution(activities[..index], takenActivities);
+    requires activities[index] !in takenActivities;
+    requires !canBeTaken(takenActivities, activities[index]);
+    ensures optimalSolution(activities[..index+1], takenActivities);
+{
+    //TODO de demonstrat!
+    assert isSolution(activities[..index+1], takenActivities);
+    assert forall sol :: isSolution(activities[..index], sol)  ==> |takenActivities| >= |sol|;
+    // // assert activities[index] !in takenActivities;
+    // assert !(forall act :: act in takenActivities ==> !overlappingActivities(act, activities[index]));
+    // assert !disjointActivitiesSet(takenActivities+{activities[index]});
+    assert !isSolution(activities[..index+1], takenActivities+{activities[index]});
+    // as fi luat o sol' opt pt activities[..index+1] care cont activities[index] ==> ar fi fost la fel de buna ca o sol ca o sol opt pt activities[..index]
+    assert forall sol :: isSolution(activities[..index+1], sol)  ==> |takenActivities| >= |sol|;
 }
 
 //TODO lema helper2 cand e adevarat !canBeTaken
@@ -75,8 +134,9 @@ lemma helper1(activities:seq<Activity>, takenActivities:set<Activity>, index:int
 method ASPGreedy(activities:seq<Activity>) returns (takenActivities:set<Activity>)    //voi modifica <activities> sa fie de tipul <seq<Activity>>
     requires |activities| > 0
     requires sortedByActEnd(activities);
+    requires distinctActivitiesSeq(activities);
     ensures nonOverlappingActivitiesTaken(activities, takenActivities);
-    ensures disjointActivitiesSet(takenActivities)
+    ensures disjointActivitiesSet(takenActivities);
     ensures optimalSolution(activities, takenActivities)   //presupun ca nu se valideaza deoarece nu poate asigura proprietatea de substructura optima?
 {
     var seqLen := |activities|;
@@ -109,15 +169,21 @@ method ASPGreedy(activities:seq<Activity>) returns (takenActivities:set<Activity
     {
         if canBeTaken(takenActivities, activities[index])
         {
-            //assert optimalSolution(activities[..index], takenActivities);
-            helper1(activities, takenActivities, index);
+            // assert optimalSolution(activities[..index], takenActivities);
+            leadsToOptimal(activities, takenActivities, index);
             takenActivities := takenActivities + {activities[index]};
             lastTaken := activities[index];
-            assert optimalSolution(activities[..lastIndex+1], takenActivities);
+            lastIndex := index + 1;
+            index := index + 1;
+            assert optimalSolution(activities[..lastIndex], takenActivities);
         }
-        lastIndex := index + 1;
-        index := index + 1;
-        assert optimalSolution(activities[..lastIndex], takenActivities);
+        else
+        {
+            notLeadingToOptimal(activities, takenActivities, index);
+            lastIndex := index + 1;
+            index := index + 1;
+            assert optimalSolution(activities[..lastIndex], takenActivities);
+        }
     }
     assert optimalSolution(activities[..lastIndex], takenActivities);
 }
