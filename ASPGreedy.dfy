@@ -85,7 +85,7 @@ predicate optimalSolution(activities: seq<Activity>, takenActivities: set<Activi
 //
 
 lemma leadsToOptimal(activities:seq<Activity>, takenActivities:set<Activity>, index:int)
-    requires |activities| > 1
+    requires |activities| > 0
     requires 0 <= index < |activities|;
     requires sortedByActEnd(activities);
     requires optimalSolution(activities[..index], takenActivities);
@@ -119,12 +119,15 @@ lemma notLeadingToOptimal(activities:seq<Activity>, takenActivities:set<Activity
     //TODO de demonstrat!
     assert isSolution(activities[..index+1], takenActivities);
     assert forall sol :: isSolution(activities[..index], sol)  ==> |takenActivities| >= |sol|;
-    // // assert activities[index] !in takenActivities;
-    // assert !(forall act :: act in takenActivities ==> !overlappingActivities(act, activities[index]));
-    // assert !disjointActivitiesSet(takenActivities+{activities[index]});
+    assert activities[index] !in takenActivities;
+    assert !(forall act :: act in takenActivities ==> !overlappingActivities(act, activities[index]));
+    assert !disjointActivitiesSet(takenActivities+{activities[index]});
     assert !isSolution(activities[..index+1], takenActivities+{activities[index]});
+    assert forall solp :: optimalSolution(activities[..index], solp) ==> |takenActivities| == |solp|;
     // as fi luat o sol' opt pt activities[..index+1] care cont activities[index] ==> ar fi fost la fel de buna ca o sol ca o sol opt pt activities[..index]
-    assert forall sol :: isSolution(activities[..index+1], sol)  ==> |takenActivities| >= |sol|;
+    assert forall solp :: optimalSolution(activities[..index+1], solp) && activities[index] in solp ==> forall sol :: optimalSolution(activities[..index], sol) ==> |sol| >= |solp|;
+    assert forall solp :: optimalSolution(activities[..index+1], solp) && activities[index] in solp && forall sol :: optimalSolution(activities[..index], sol) ==> |sol| >= |solp|;
+    assert forall sol :: (optimalSolution(activities[..index+1], sol) && activities[index] in sol) ==> |takenActivities| >= |sol|;
 }
 
 //TODO lema helper2 cand e adevarat !canBeTaken
@@ -225,4 +228,48 @@ method ASPGreedyRec(activities:seq<Activity>, accumulator:set<Activity>) returns
             return temp;
         }
     }
+}
+
+method ASPGreedyRecp(activities:seq<Activity>, accumulator:set<Activity>, index:int) returns (takenActivities:set<Activity>)
+    decreases |activities| - index
+    requires |activities| >= 1
+    requires 0 <= index < |activities|
+    requires sortedByActEnd(activities)
+    requires distinctActivitiesSeq(activities)
+    ensures |takenActivities| > 0
+    requires disjointActivitiesSet(accumulator)
+    requires optimalSolution(activities[..index], accumulator)
+    ensures disjointActivitiesSet(takenActivities)
+    ensures optimalSolution(activities, takenActivities)   //verificat de ce crapa?!
+    //--cum pot asigura ca la prima iteratie se intra cu <accumulator={}>?
+{
+    if (index == |activities| - 1) 
+    {
+        if (canBeTaken(accumulator, activities[index]))
+        {
+            leadsToOptimal(activities, accumulator, index);
+            return accumulator + {activities[index]};
+        }
+        else
+        {
+            notLeadingToOptimal(activities, accumulator, index);
+            return accumulator;
+        }
+    }
+    else 
+        // if (index < |activities| - 1)
+        {
+            if (canBeTaken(accumulator, activities[index]))
+            {
+                leadsToOptimal(activities, accumulator, index);
+                var temp := ASPGreedyRecp(activities, accumulator + {activities[index]}, index + 1);
+                return temp;
+            }
+            else
+            {
+                notLeadingToOptimal(activities, accumulator, index);
+                var temp := ASPGreedyRecp(activities, accumulator, index + 1);
+                return temp;
+            }
+        }
 }
